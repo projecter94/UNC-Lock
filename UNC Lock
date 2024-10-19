@@ -1,0 +1,200 @@
+local targetaim = {
+	  enabled = true,
+    targetPart = "HumanoidRootPart",
+    prediction = 0.1485436,
+    AutoPred = true
+}
+
+local player = game.Players.LocalPlayer
+local playerCamera = workspace.CurrentCamera
+local FOVCircle = {Position = Vector2.new(playerCamera.ViewportSize.X / 2, playerCamera.ViewportSize.Y / 2), Radius = 200}
+
+local services = {Players = game:GetService("Players"), RunService = game:GetService("RunService")}
+local target = nil
+
+local function GetClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, plr in pairs(services.Players:GetPlayers()) do
+        if plr ~= player and plr.Character then
+            for _, part in pairs(plr.Character:GetChildren()) do
+                if part:IsA("BasePart") and part.Transparency ~= 1 then
+                    local screenPosition = playerCamera:WorldToViewportPoint(part.Position)
+                    local direction = (part.Position - playerCamera.CFrame.Position).unit
+                    local dotProduct = playerCamera.CFrame.LookVector:Dot(direction)
+                    
+                    if dotProduct > 0 then
+                        local distance = (Vector2.new(screenPosition.X, screenPosition.Y) - FOVCircle.Position).Magnitude
+                        
+                        if distance < shortestDistance and distance <= FOVCircle.Radius then
+                            closestPlayer = plr
+                            shortestDistance = distance
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+local Tool = Instance.new("Tool")
+Tool.RequiresHandle = false
+Tool.Name = "Lock Tool"
+Tool.Parent = player.Backpack
+
+local function connectCharacterAdded()
+    player.CharacterAdded:Connect(function(char)
+        services.RunService.RenderStepped:Connect(function()
+            if targetaim.enabled then
+                target = GetClosestPlayer()
+            end
+        end)
+    end)
+end
+connectCharacterAdded()
+
+player.CharacterRemoving:Connect(function()
+    Tool.Parent = player.Backpack
+end)
+
+local screenGui = Instance.new("ScreenGui", player.PlayerGui)
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 200, 0, 100)
+frame.Position = UDim2.new(0, 10, 0, 10)
+frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+frame.BackgroundTransparency = 0
+frame.Visible = false
+
+local frameCorner = Instance.new("UICorner", frame)
+frameCorner.CornerRadius = UDim.new(0, 10)
+
+local playerIcon = Instance.new("ImageLabel", frame)
+playerIcon.Size = UDim2.new(0, 25, 0, 25)
+playerIcon.Position = UDim2.new(0, 10, 0, 15)
+playerIcon.BackgroundTransparency = 1
+
+local playerIconCorner = Instance.new("UICorner", playerIcon)
+playerIconCorner.CornerRadius = UDim.new(0, 5)
+
+local playerName = Instance.new("TextLabel", frame)
+playerName.Size = UDim2.new(0, 120, 0, 20)
+playerName.Position = UDim2.new(0, 50, 0, 15)
+playerName.TextScaled = true
+playerName.BackgroundTransparency = 1
+playerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+playerName.TextXAlignment = Enum.TextXAlignment.Left
+
+local textSizeConstraint = Instance.new("UITextSizeConstraint", playerName)
+textSizeConstraint.MaxTextSize = 18
+
+local healthBarBg = Instance.new("Frame", frame)
+healthBarBg.Size = UDim2.new(0, 180, 0, 20)
+healthBarBg.Position = UDim2.new(0, 10, 0, 40)
+healthBarBg.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+healthBarBg.BorderSizePixel = 0
+
+local healthBarBgCorner = Instance.new("UICorner", healthBarBg)
+healthBarBgCorner.CornerRadius = UDim.new(0, 5)
+
+local healthBar = Instance.new("Frame", healthBarBg)
+healthBar.Size = UDim2.new(1, 0, 1, 0)
+healthBar.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+healthBar.BorderSizePixel = 0
+
+local healthBarCorner = Instance.new("UICorner", healthBar)
+healthBarCorner.CornerRadius = UDim.new(0, 5)
+
+local armorBarBg = Instance.new("Frame", frame)
+armorBarBg.Size = UDim2.new(0, 180, 0, 20)
+armorBarBg.Position = UDim2.new(0, 10, 0, 65)
+armorBarBg.BackgroundColor3 = Color3.fromRGB(0, 0, 255)
+armorBarBg.BorderSizePixel = 0
+
+local armorBarBgCorner = Instance.new("UICorner", armorBarBg)
+armorBarBgCorner.CornerRadius = UDim.new(0, 5)
+
+local armorBar = Instance.new("Frame", armorBarBg)
+armorBar.Size = UDim2.new(1, 0, 1, 0)
+armorBar.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+armorBar.BorderSizePixel = 0
+
+local armorBarCorner = Instance.new("UICorner", armorBar)
+armorBarCorner.CornerRadius = UDim.new(0, 5)
+
+Tool.Activated:Connect(function()
+    if targetaim.enabled then
+        target = GetClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild("Humanoid") then
+            playerName.Text = target.Name
+            playerIcon.Image = "rbxthumb://type=AvatarHeadShot&id="..target.UserId.."&w=150&h=150"
+            frame.Visible = true
+        else
+            frame.Visible = false
+        end
+    else
+        frame.Visible = false
+    end
+end)
+
+local mt = getrawmetatable(game)
+local oldNameCall = mt.__namecall
+setreadonly(mt, false)
+
+mt.__namecall = newcclosure(function(Self, ...)
+    local args = {...}
+    local methodName = getnamecallmethod()
+    if not checkcaller() and methodName == "FireServer" then
+        for i, Argument in ipairs(args) do
+            if typeof(Argument) == "Vector3" and target and target.Character then
+                args[i] = target.Character[targetaim.targetPart].Position + (target.Character[targetaim.targetPart].Velocity * targetaim.prediction)
+                return oldNameCall(Self, unpack(args))
+            end
+        end
+    end
+    return oldNameCall(Self, ...)
+end)
+setreadonly(mt, true)
+
+services.RunService.RenderStepped:Connect(function()
+    if targetaim.enabled and target and target.Character then
+        if target.Character:FindFirstChild("Humanoid") then
+            local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                healthBar.Size = UDim2.new(humanoid.Health / humanoid.MaxHealth, 0, 1, 0)
+            end
+
+            local armor = nil
+            for _, v in pairs(target.Character:GetChildren()) do
+                if v:IsA("IntValue") and v.Name:lower():find("armor") then
+                    armor = v
+                    break
+                end
+            end
+
+            if armor then
+                armorBar.Size = UDim2.new(armor.Value / armor.MaxValue, 0, 1, 0)
+                armorBar.BackgroundColor3 = Color3.fromRGB(0, 255, 255)
+            else
+                armorBar.Size = UDim2.new(1, 0, 1, 0)
+                armorBar.BackgroundColor3 = Color3.fromRGB(128, 128, 128)
+            end
+        else
+            frame.Visible = false
+        end
+    else
+        frame.Visible = false
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    frame.Visible = false
+end)
+
+for _, con in pairs(getconnections(Camera.Changed)) do
+    con:Disable()
+end
+for _, con in pairs(getconnections(Camera:GetPropertyChangedSignal("CFrame"))) do
+    con:Disable()
+end
